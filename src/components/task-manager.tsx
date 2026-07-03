@@ -33,11 +33,30 @@ export default function TaskManager({session}: {session: Session}) {
     fetchTasks();
   }, []);
 
+  useEffect(() => {
+    const channel = supabase.channel("tasks-channel");
+
+    channel.on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "tasks" },
+      (payload) => {
+        const newTask = payload.new as Task;
+        setTasks((prev) => [...prev, newTask]);
+      },
+    );
+
+    channel.subscribe();
+
+    // This cleanup function fixes your error
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   const deleteTask = async (id: number) => {
-    const { error, data } = await supabase.from("tasks").delete().eq("id", id);
-    if (error) {
-      console.error("Error deleting tasks: ", error.message);
-    }
+    const { error } = await supabase.from("tasks").delete().eq("id", id);
+
+    setTasks((prevTasks) => prevTasks.filter((task) => task.id !== id));
   };
 
   const updateTask = async (id: number) => {
@@ -55,11 +74,11 @@ export default function TaskManager({session}: {session: Session}) {
     const { error, data } = await supabase
       .from("tasks")
       .insert({...newTask, email: session.user.email})
+      .select()
       .single();
     if (error) {
       console.error("Error Inserting tasks: ", error.message);
     }
-
     setNewTask({ title: "", description: "" });
   };
 
@@ -101,15 +120,15 @@ export default function TaskManager({session}: {session: Session}) {
 
       {/* Centered List of Tasks */}
       <ul className="w-full max-w-100 list-none p-0 space-y-3">
-        {tasks.map((task, key) => (
+        {tasks.map((task) => (
           <li
-            key={key}
+            key={task.id}
             className="border border-gray-600 rounded p-5 flex flex-col items-center justify-center text-center"
           >
             <h3 className="text-base font-medium mb-1">{task.title}</h3>
             <p className="text-gray-400 text-sm mb-4">{task.description}</p>
             <textarea
-              placeholder="Updated dscription"
+              placeholder="Updated description"
               onChange={(e) => setNewDescription(e.target.value)}
             />
 
